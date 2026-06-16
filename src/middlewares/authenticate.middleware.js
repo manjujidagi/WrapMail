@@ -6,9 +6,7 @@ const authenticate = (req, res, next) => {
   console.log('ENV KEY:', process.env.API_KEY);
 
   if (!apiKey || apiKey !== process.env.API_KEY) {
-    return res.status(401).json({
-      message: 'Unauthorized'
-    });
+    return res.status(401).json({ error: 'Unauthorized', error_code: 'UNAUTHORIZED' });
   }
 
   next();
