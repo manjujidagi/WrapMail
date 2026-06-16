@@ -4,7 +4,7 @@ import { decrypt } from './../methods/crypto.methods.js';
 const authorize = (req, res, next) => {
   const configData = req.header('User-Data');
   if (!configData) {
-    return res.status(400).json({ error: 'User-Data header is missing', error_code: 'MISSING_USER_DATA' });
+    return res.status(400).json({ message: 'User-Data header is missing' });
   }
 
   try {
@@ -14,7 +14,7 @@ const authorize = (req, res, next) => {
 
     req.decryptedData = decryptedData;
   } catch (error) {
-    return res.status(400).json({ error: 'Invalid User-Data header', error_code: 'INVALID_USER_DATA' });
+    return res.status(400).json({ message: 'Invalid User-Data header' });
   }
 
   next();
