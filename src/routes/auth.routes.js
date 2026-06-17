@@ -32,7 +32,7 @@ router.post('/login', (req, res) => {
         const encrypted_user_data = encrypt(user_data);
         return res.status(200).json({ message: 'Login successful', data: encrypted_user_data });
     } catch (error) {
-         return res.status(500).json({ error: 'Error encrypting user data', error_code: 'ENCRYPTION_ERROR' });
+        return res.status(500).json({ error: 'Error encrypting user data', error_code: 'ENCRYPTION_ERROR' });
     }
 });
 
