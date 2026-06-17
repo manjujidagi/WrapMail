@@ -2,6 +2,7 @@
 
 ## API Requirements
 
+
 - **`X-API-Key` Header**:  
   All requests must include the `X-API-Key` header. This is mandatory and can be configured in the `.env` file.
 
