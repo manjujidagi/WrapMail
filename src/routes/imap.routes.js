@@ -1,13 +1,17 @@
 import { Router } from "express";
-import { getInboxEmails } from "../methods/imap.methods.js";
+import { getEmails } from "../methods/imap.methods.js";
 
 const router = Router();
 
-// Get Inbox Emails
+// Get Emails
 router.get("/inbox", async (req, res) => {
-
   try {
-    const result = await getInboxEmails(req.decryptedData);
+    // Get mailbox from query parameter
+    const { mailbox = "INBOX" } = req.query;
+
+    // Fetch emails
+    const result = await getEmails(req.decryptedData, mailbox);
+
     return res.status(200).json(result);
   } catch (error) {
     return res.status(500).json({
