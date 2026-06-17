@@ -19,7 +19,7 @@ router.post("/send", async (req, res) => {
     }
 
     // Send Email
-    const result = await sendEmail({
+    const result = await sendEmail(req.decryptedData,{
       to,
       subject,
       text

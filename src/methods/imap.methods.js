@@ -1,32 +1,28 @@
-import dotenv from "dotenv";
 import { ImapFlow } from "imapflow";
 
-dotenv.config({
-  path: ".env"
-});
-
-// Create IMAP Client
-const client = new ImapFlow({
-  host: process.env.IMAP_HOST,
-  port: Number(process.env.IMAP_PORT),
-  secure: true,
-
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS
-  }
-});
-
 // Fetch Inbox Emails
-export const getInboxEmails = async () => {
+export const getInboxEmails = async (userData) => {
+
+  // Create IMAP Client
+  const client = new ImapFlow({
+    host: userData.imap.host,
+    port: Number(userData.imap.port),
+    secure: userData.imap.secure,
+    auth: {
+      user: userData.imap.auth.user,
+      pass: userData.imap.auth.pass
+    }
+  });
 
   try {
     // Connect
     await client.connect();
     // Lock Inbox
     const lock = await client.getMailboxLock("INBOX");
+
     try {
       const emails = [];
+
       // Fetch latest emails
       for await (const message of client.fetch("1:*", {
         envelope: true
@@ -37,6 +33,7 @@ export const getInboxEmails = async () => {
           date: message.envelope.date
         });
       }
+
       // Latest first
       emails.reverse();
       return {
@@ -44,10 +41,10 @@ export const getInboxEmails = async () => {
         count: emails.length,
         emails
       };
-
     } finally {
       lock.release();
     }
+
   } catch (error) {
     console.error("IMAP ERROR:", error.message);
     return {
@@ -56,5 +53,6 @@ export const getInboxEmails = async () => {
     };
   } finally {
     await client.logout();
+
   }
 };

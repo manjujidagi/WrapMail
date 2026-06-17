@@ -7,7 +7,7 @@ const router = Router();
 router.get("/inbox", async (req, res) => {
 
   try {
-    const result = await getInboxEmails();
+    const result = await getInboxEmails(req.decryptedData);
     return res.status(200).json(result);
   } catch (error) {
     return res.status(500).json({
