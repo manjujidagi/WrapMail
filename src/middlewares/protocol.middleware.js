@@ -3,7 +3,7 @@ export const imap_authorize = (req, res, next) => {
   const decryptedData = req.decryptedData;
 
   if (!('imap' in decryptedData)) {
-     return res.status(400).json({ error: 'IMAP data is missing', error_code: 'MISSING_IMAP_DATA' });
+    return res.status(400).json({ error: 'IMAP data is missing', error_code: 'MISSING_IMAP_DATA' });
   }
 
   next();
