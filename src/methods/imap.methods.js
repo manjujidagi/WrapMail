@@ -1,7 +1,9 @@
 import { ImapFlow } from "imapflow";
 
 // Fetch Emails
-export const getEmails = async (userData, mailbox = "INBOX") => {
+export const getEmails = async (userData, query = {}) => {
+  const { mailbox = "INBOX" } = query;
+
   // Create IMAP Client
   const client = new ImapFlow({
     host: userData.imap.host,
@@ -24,7 +26,7 @@ export const getEmails = async (userData, mailbox = "INBOX") => {
       // Open mailbox to get total number of emails
       const mailboxInfo = await client.mailboxOpen(mailbox);
 
-      // Fetch emails
+      // Fetch latest 10 emails
       const start = Math.max(1, mailboxInfo.exists - 9);
 
       const emails = [];
