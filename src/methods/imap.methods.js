@@ -2,7 +2,14 @@ import { ImapFlow } from "imapflow";
 
 // Fetch Emails
 export const getEmails = async (userData, query = {}) => {
-  const { mailbox = "INBOX" } = query;
+  const {
+    mailbox = "INBOX",
+    page = 1,
+    limit = 10
+  } = query;
+
+  const pageNumber = Number(page);
+  const limitNumber = Number(limit);
 
   // Create IMAP Client
   const client = new ImapFlow({
@@ -23,15 +30,17 @@ export const getEmails = async (userData, query = {}) => {
     const lock = await client.getMailboxLock(mailbox);
 
     try {
-      // Open mailbox to get total number of emails
+      // Open mailbox
       const mailboxInfo = await client.mailboxOpen(mailbox);
 
-      // Fetch latest 10 emails
-      const start = Math.max(1, mailboxInfo.exists - 9);
+      // Pagination
+      const start = (pageNumber - 1) * limitNumber + 1;
+      const end = Math.min(start + limitNumber - 1, mailboxInfo.exists);
 
       const emails = [];
 
-      for await (const message of client.fetch(`${start}:*`, {
+      // Fetch requested page
+      for await (const message of client.fetch(`${start}:${end}`, {
         envelope: true
       })) {
         emails.push({
@@ -41,11 +50,11 @@ export const getEmails = async (userData, query = {}) => {
         });
       }
 
-      // Latest first
-      emails.reverse();
-
       return {
         success: true,
+        page: pageNumber,
+        limit: limitNumber,
+        total: mailboxInfo.exists,
         count: emails.length,
         emails
       };
