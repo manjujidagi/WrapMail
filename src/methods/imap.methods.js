@@ -1,6 +1,5 @@
 import { ImapFlow } from "imapflow";
 
-// Fetch Emails
 export const getEmails = async (userData, query = {}) => {
   const {
     mailbox = "INBOX",
@@ -8,10 +7,9 @@ export const getEmails = async (userData, query = {}) => {
     limit = 10
   } = query;
 
-  const pageNumber = Number(page);
-  const limitNumber = Number(limit);
+  const pageNumber = Math.max(1, Number(page));
+  const limitNumber = Math.max(1, Number(limit));
 
-  // Create IMAP Client
   const client = new ImapFlow({
     host: userData.imap.host,
     port: Number(userData.imap.port),
@@ -23,25 +21,43 @@ export const getEmails = async (userData, query = {}) => {
   });
 
   try {
-    // Connect
     await client.connect();
 
-    // Lock Mailbox
     const lock = await client.getMailboxLock(mailbox);
 
     try {
-      // Open mailbox
       const mailboxInfo = await client.mailboxOpen(mailbox);
 
       const total = mailboxInfo.exists;
 
-      // Newest-first pagination
+      if (total === 0) {
+        return {
+          success: true,
+          page: pageNumber,
+          limit: limitNumber,
+          total,
+          count: 0,
+          emails: []
+        };
+      }
+
+      // Calculate sequence numbers for newest-first pagination
       const end = total - (pageNumber - 1) * limitNumber;
       const start = Math.max(1, end - limitNumber + 1);
 
+      if (end < 1) {
+        return {
+          success: true,
+          page: pageNumber,
+          limit: limitNumber,
+          total,
+          count: 0,
+          emails: []
+        };
+      }
+
       const emails = [];
 
-      // Fetch emails
       for await (const message of client.fetch(`${start}:${end}`, {
         envelope: true
       })) {
@@ -52,7 +68,7 @@ export const getEmails = async (userData, query = {}) => {
         });
       }
 
-      // Display newest first
+      // Return newest emails first
       emails.reverse();
 
       return {
@@ -60,6 +76,7 @@ export const getEmails = async (userData, query = {}) => {
         page: pageNumber,
         limit: limitNumber,
         total,
+        totalPages: Math.ceil(total / limitNumber),
         count: emails.length,
         emails
       };
@@ -68,6 +85,7 @@ export const getEmails = async (userData, query = {}) => {
     }
   } catch (error) {
     console.error("IMAP ERROR:", error.message);
+
     return {
       success: false,
       message: error.message
