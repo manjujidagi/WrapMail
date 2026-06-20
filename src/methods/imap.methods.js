@@ -33,28 +33,33 @@ export const getEmails = async (userData, query = {}) => {
       // Open mailbox
       const mailboxInfo = await client.mailboxOpen(mailbox);
 
-      // Pagination
-      const start = (pageNumber - 1) * limitNumber + 1;
-      const end = Math.min(start + limitNumber - 1, mailboxInfo.exists);
+      const total = mailboxInfo.exists;
+
+      // Newest-first pagination
+      const end = total - (pageNumber - 1) * limitNumber;
+      const start = Math.max(1, end - limitNumber + 1);
 
       const emails = [];
 
-      // Fetch requested page
+      // Fetch emails
       for await (const message of client.fetch(`${start}:${end}`, {
         envelope: true
       })) {
         emails.push({
-          from: message.envelope.from[0].address,
+          from: message.envelope.from?.[0]?.address,
           subject: message.envelope.subject,
           date: message.envelope.date
         });
       }
 
+      // Display newest first
+      emails.reverse();
+
       return {
         success: true,
         page: pageNumber,
         limit: limitNumber,
-        total: mailboxInfo.exists,
+        total,
         count: emails.length,
         emails
       };
@@ -63,7 +68,6 @@ export const getEmails = async (userData, query = {}) => {
     }
   } catch (error) {
     console.error("IMAP ERROR:", error.message);
-
     return {
       success: false,
       message: error.message
