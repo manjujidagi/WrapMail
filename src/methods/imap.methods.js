@@ -107,10 +107,15 @@ export const getEmails = async (userData, query = {}) => {
 };
 
 // =======================================================
-// NEW: Fetch Individual Email Details by UID
+// Fetch Individual Email Details by UID
 // =======================================================
 
-export const getEmail = async (userData, emailId) => {
+export const getEmail = async (
+  userData,
+  emailId,
+  mailbox = "INBOX"
+) => {
+  // Create IMAP client
   const client = new ImapFlow({
     host: userData.imap.host,
     port: Number(userData.imap.port),
@@ -125,24 +130,26 @@ export const getEmail = async (userData, emailId) => {
     // Connect to IMAP server
     await client.connect();
 
-    // Lock inbox
-    const lock = await client.getMailboxLock("INBOX");
+    // Lock selected mailbox
+    const lock = await client.getMailboxLock(mailbox);
 
     try {
-      // Open mailbox
-      await client.mailboxOpen("INBOX");
+      // Open selected mailbox
+      await client.mailboxOpen(mailbox);
 
-      // Fetch a single email using UID
-      const message = await client.fetchOne(Number(emailId), {
-        uid: true,
-        envelope: true,
-        source: true
-      },
-      { 
-        uid: true
-      }
-    );
+      // Fetch email by UID
+      const message = await client.fetchOne(
+        emailId,
+        {
+          envelope: true,
+          source: true
+        },
+        {
+          uid: true
+        }
+      );
 
+      // Email not found
       if (!message) {
         return {
           success: false,
@@ -175,6 +182,9 @@ export const getEmail = async (userData, emailId) => {
       data: null
     };
   } finally {
-    await client.logout();
+    // Logout only if client is connected
+    if (client.usable) {
+      await client.logout();
+    }
   }
 };
