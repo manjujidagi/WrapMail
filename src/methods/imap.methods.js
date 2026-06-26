@@ -1,5 +1,6 @@
 import { ImapFlow } from "imapflow";
 
+// Fetch Emails
 export const getEmails = async (userData, query = {}) => {
   const {
     mailbox = "INBOX",
@@ -10,6 +11,7 @@ export const getEmails = async (userData, query = {}) => {
   const pageNumber = Math.max(1, Number(page));
   const limitNumber = Math.max(1, Number(limit));
 
+  // Create IMAP client
   const client = new ImapFlow({
     host: userData.imap.host,
     port: Number(userData.imap.port),
@@ -21,15 +23,19 @@ export const getEmails = async (userData, query = {}) => {
   });
 
   try {
+    // Connect to IMAP server
     await client.connect();
 
+    // Lock mailbox
     const lock = await client.getMailboxLock(mailbox);
 
     try {
+      // Open mailbox
       const mailboxInfo = await client.mailboxOpen(mailbox);
 
       const total = mailboxInfo.exists;
 
+      // Return empty response if mailbox has no emails
       if (total === 0) {
         return {
           success: true,
@@ -45,6 +51,7 @@ export const getEmails = async (userData, query = {}) => {
       const end = total - (pageNumber - 1) * limitNumber;
       const start = Math.max(1, end - limitNumber + 1);
 
+      // Requested page exceeds available emails
       if (end < 1) {
         return {
           success: true,
@@ -58,17 +65,21 @@ export const getEmails = async (userData, query = {}) => {
 
       const emails = [];
 
+      // Fetch emails from calculated sequence range
       for await (const message of client.fetch(`${start}:${end}`, {
+        uid: true, // NEW: Fetch UID
         envelope: true
       })) {
         emails.push({
+          id: message.uid, // NEW: Return UID
           from: message.envelope.from?.[0]?.address,
           subject: message.envelope.subject,
           date: message.envelope.date
         });
       }
 
-      // Return newest emails first
+      // Fetch returns oldest → newest
+      // Reverse to return newest → oldest
       emails.reverse();
 
       return {
@@ -92,5 +103,88 @@ export const getEmails = async (userData, query = {}) => {
     };
   } finally {
     await client.logout();
+  }
+};
+
+// =======================================================
+// Fetch Individual Email Details by UID
+// =======================================================
+
+export const getEmail = async (
+  userData,
+  emailId,
+  mailbox = "INBOX"
+) => {
+  // Create IMAP client
+  const client = new ImapFlow({
+    host: userData.imap.host,
+    port: Number(userData.imap.port),
+    secure: userData.imap.secure,
+    auth: {
+      user: userData.imap.auth.user,
+      pass: userData.imap.auth.pass
+    }
+  });
+
+  try {
+    // Connect to IMAP server
+    await client.connect();
+
+    // Lock selected mailbox
+    const lock = await client.getMailboxLock(mailbox);
+
+    try {
+      // Open selected mailbox
+      await client.mailboxOpen(mailbox);
+
+      // Fetch email by UID
+      const message = await client.fetchOne(
+        emailId,
+        {
+          envelope: true,
+          source: true
+        },
+        {
+          uid: true
+        }
+      );
+
+      // Email not found
+      if (!message) {
+        return {
+          success: false,
+          message: "Email not found",
+          data: null
+        };
+      }
+
+      return {
+        success: true,
+        message: "Email fetched successfully",
+        data: {
+          id: message.uid,
+          from: message.envelope.from?.[0]?.address,
+          to: message.envelope.to?.map(user => user.address),
+          subject: message.envelope.subject,
+          date: message.envelope.date,
+          body: message.source.toString()
+        }
+      };
+    } finally {
+      lock.release();
+    }
+  } catch (error) {
+    console.error("IMAP ERROR:", error.message);
+
+    return {
+      success: false,
+      message: error.message,
+      data: null
+    };
+  } finally {
+    // Logout only if client is connected
+    if (client.usable) {
+      await client.logout();
+    }
   }
 };
