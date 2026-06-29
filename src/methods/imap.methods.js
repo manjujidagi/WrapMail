@@ -303,3 +303,92 @@ export const getAttachments = async (
     }
   }
 };
+
+// =======================================================
+// Download Email Attachment by UID and Attachment ID
+// =======================================================
+
+export const downloadAttachment = async (
+  userData,
+  emailId,
+  attachmentId,
+  mailbox = "INBOX",
+  res
+) => {
+  // Create IMAP client
+  const client = new ImapFlow({
+    host: userData.imap.host,
+    port: Number(userData.imap.port),
+    secure: userData.imap.secure,
+    auth: {
+      user: userData.imap.auth.user,
+      pass: userData.imap.auth.pass
+    }
+  });
+
+  try {
+    // Connect to IMAP server
+    await client.connect();
+
+    // Lock selected mailbox
+    const lock = await client.getMailboxLock(mailbox);
+
+    try {
+      // Open selected mailbox
+      await client.mailboxOpen(mailbox);
+
+      // Download attachment using email UID and attachment part id
+      const download = await client.download(
+        emailId,
+        attachmentId,
+        {
+          uid: true
+        }
+      );
+
+      if (!download) {
+        return res.status(404).json({
+          success: false,
+          message: "Attachment not found"
+        });
+      }
+
+      const { meta, content } = download;
+
+      // Attachment not found
+      if (!content) {
+        return res.status(404).json({
+          success: false,
+          message: "Attachment not found"
+        });
+      }
+
+      // Set response headers
+      res.setHeader(
+        "Content-Type",
+        meta.contentType || "application/octet-stream"
+      );
+
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${meta.filename || "attachment"}"`
+      );
+
+      // Stream attachment to client
+      content.pipe(res);
+    } finally {
+      lock.release();
+    }
+  } catch (error) {
+    console.error("IMAP ERROR:", error.message);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  } finally {
+    if (client.usable) {
+      await client.logout();
+    }
+  }
+};
