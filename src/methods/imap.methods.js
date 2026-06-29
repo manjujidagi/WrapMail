@@ -102,7 +102,9 @@ export const getEmails = async (userData, query = {}) => {
       message: error.message
     };
   } finally {
-    await client.logout();
+    if (client.usable) {
+      await client.logout();
+    }
   }
 };
 
@@ -183,6 +185,119 @@ export const getEmail = async (
     };
   } finally {
     // Logout only if client is connected
+    if (client.usable) {
+      await client.logout();
+    }
+  }
+};
+
+// =======================================================
+// Fetch Email Attachments by UID
+// =======================================================
+
+export const getAttachments = async (
+  userData,
+  emailId,
+  mailbox = "INBOX"
+) => {
+  // Create IMAP client
+  const client = new ImapFlow({
+    host: userData.imap.host,
+    port: Number(userData.imap.port),
+    secure: userData.imap.secure,
+    auth: {
+      user: userData.imap.auth.user,
+      pass: userData.imap.auth.pass
+    }
+  });
+
+  try {
+    // Connect to IMAP server
+    await client.connect();
+
+    // Lock selected mailbox
+    const lock = await client.getMailboxLock(mailbox);
+
+    try {
+      // Open selected mailbox
+      await client.mailboxOpen(mailbox);
+
+      // Fetch email body structure by UID
+      const message = await client.fetchOne(
+        emailId,
+        {
+          bodyStructure: true
+        },
+        {
+          uid: true
+        }
+      );
+
+      // Email not found
+      if (!message) {
+        return {
+          success: false,
+          message: "Email not found",
+          data: null
+        };
+      }
+
+      const attachments = [];
+
+      // Recursively traverse the body structure
+      const extractAttachments = (node) => {
+        if (!node) {
+          return;
+        }
+
+        // If the current node is an attachment, collect its details
+        if (node.disposition === "attachment") {
+          attachments.push({
+            id: node.part,
+            filename:
+              node.dispositionParameters?.filename ||
+              node.parameters?.name ||
+              "unknown",
+            contentType: node.type,
+            size: node.size
+          });
+        }
+
+        // Process child nodes recursively
+        if (node.childNodes?.length) {
+          for (const child of node.childNodes) {
+            extractAttachments(child);
+          }
+        }
+      };
+
+      // Start traversal from the root body structure
+      extractAttachments(message.bodyStructure);
+      
+      if (attachments.length === 0) {
+        return {
+          success: true,
+          message: "No attachments found",
+          data: []
+        };
+      }
+      return {
+        success: true,
+        message: "Attachments fetched successfully",
+        data: attachments
+      };
+    } finally {
+      lock.release();
+    }
+  } catch (error) {
+    console.error("IMAP ERROR:", error.message);
+
+    return {
+      success: false,
+      message: error.message,
+      data: null
+    };
+  } finally {
     if (client.usable) {
       await client.logout();
     }
