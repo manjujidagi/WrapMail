@@ -10,6 +10,10 @@ const authorize = (req, res, next) => {
   try {
     const decryptedData = decrypt(configData);
 
+    console.log("========== USER DATA ==========");
+    console.log(decryptedData);
+    console.log("===============================");
+
     // TODO : Also verify all the required fields are present in decryptedData
 
     req.decryptedData = decryptedData;

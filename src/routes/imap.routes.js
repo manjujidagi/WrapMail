@@ -11,9 +11,10 @@ const router = Router();
 router.get("/emails", async (req, res) => {
   try {
     const result = await getEmails(req.decryptedData, req.query);
-
     return res.status(200).json(result);
   } catch (error) {
+    console.error(error);
+
     return res.status(500).json({
       success: false,
       message: error.message
@@ -23,7 +24,6 @@ router.get("/emails", async (req, res) => {
 
 router.get("/emails/:email_id", async (req, res) => {
   try {
-    // Validate email id
     const emailId = Number(req.params.email_id);
 
     if (!Number.isInteger(emailId) || emailId <= 0) {
@@ -33,23 +33,22 @@ router.get("/emails/:email_id", async (req, res) => {
       });
     }
 
-    // Fetch email
     const result = await getEmail(
       req.decryptedData,
       emailId,
       req.query.mailbox
     );
 
-    // Email not found or other IMAP error
     if (!result.success) {
-      const status =
-        result.message === "Email not found" ? 404 : 500;
-        
-      return res.status(status).json(result);
+      return res.status(
+        result.message === "Email not found" ? 404 : 500
+      ).json(result);
     }
 
     return res.status(200).json(result);
   } catch (error) {
+    console.error(error);
+
     return res.status(500).json({
       success: false,
       message: error.message
@@ -59,7 +58,6 @@ router.get("/emails/:email_id", async (req, res) => {
 
 router.get("/emails/:email_id/attachments", async (req, res) => {
   try {
-    // Validate email id
     const emailId = Number(req.params.email_id);
 
     if (!Number.isInteger(emailId) || emailId <= 0) {
@@ -69,23 +67,22 @@ router.get("/emails/:email_id/attachments", async (req, res) => {
       });
     }
 
-    // Fetch attachments
     const result = await getAttachments(
       req.decryptedData,
       emailId,
       req.query.mailbox
     );
 
-    // Email not found
     if (!result.success) {
-      const status =
-        result.message === "Email not found" ? 404 : 500;
-
-      return res.status(status).json(result);
+      return res.status(
+        result.message === "Email not found" ? 404 : 500
+      ).json(result);
     }
 
     return res.status(200).json(result);
   } catch (error) {
+    console.error(error);
+    
     return res.status(500).json({
       success: false,
       message: error.message
@@ -97,7 +94,6 @@ router.get(
   "/emails/:email_id/attachments/:attachment_id/download",
   async (req, res) => {
     try {
-      // Validate email id
       const emailId = Number(req.params.email_id);
 
       if (!Number.isInteger(emailId) || emailId <= 0) {
@@ -107,7 +103,6 @@ router.get(
         });
       }
 
-      // Validate attachment id
       const attachmentId = req.params.attachment_id;
 
       if (!attachmentId) {
@@ -117,7 +112,6 @@ router.get(
         });
       }
 
-      // Download attachment
       await downloadAttachment(
         req.decryptedData,
         emailId,
@@ -126,6 +120,8 @@ router.get(
         res
       );
     } catch (error) {
+      console.error(error);
+
       return res.status(500).json({
         success: false,
         message: error.message
