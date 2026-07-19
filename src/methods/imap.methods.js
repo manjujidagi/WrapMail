@@ -11,53 +11,52 @@ export const getEmails = async (userData, query = {}) => {
   const pageNumber = Math.max(1, Number(page));
   const limitNumber = Math.max(1, Number(limit));
 
-  // Create IMAP client
   const client = new ImapFlow({
     host: userData.imap.host,
     port: Number(userData.imap.port),
     secure: userData.imap.secure,
     auth: {
-      user: userData.imap.auth.user,
-      pass: userData.imap.auth.pass
+      user: userData.imap.username,
+      pass: userData.imap.password
     }
   });
 
+  // Prevent unhandled error events from crashing Node.js
+  client.on("error", (err) => {
+    console.error("IMAP Connection Error:", err.message);
+  });
+
   try {
-    // Connect to IMAP server
     await client.connect();
 
-    // Lock mailbox
     const lock = await client.getMailboxLock(mailbox);
 
     try {
-      // Open mailbox
-      const mailboxInfo = await client.mailboxOpen(mailbox);
+      // Mailbox is already selected by getMailboxLock()
+      const total = client.mailbox.exists;
 
-      const total = mailboxInfo.exists;
-
-      // Return empty response if mailbox has no emails
       if (total === 0) {
         return {
           success: true,
           page: pageNumber,
           limit: limitNumber,
           total,
+          totalPages: 0,
           count: 0,
           emails: []
         };
       }
 
-      // Calculate sequence numbers for newest-first pagination
       const end = total - (pageNumber - 1) * limitNumber;
       const start = Math.max(1, end - limitNumber + 1);
 
-      // Requested page exceeds available emails
       if (end < 1) {
         return {
           success: true,
           page: pageNumber,
           limit: limitNumber,
           total,
+          totalPages: Math.ceil(total / limitNumber),
           count: 0,
           emails: []
         };
@@ -65,21 +64,18 @@ export const getEmails = async (userData, query = {}) => {
 
       const emails = [];
 
-      // Fetch emails from calculated sequence range
       for await (const message of client.fetch(`${start}:${end}`, {
-        uid: true, // NEW: Fetch UID
+        uid: true,
         envelope: true
       })) {
         emails.push({
-          id: message.uid, // NEW: Return UID
-          from: message.envelope.from?.[0]?.address,
-          subject: message.envelope.subject,
-          date: message.envelope.date
+          id: message.uid,
+          from: message.envelope.from?.[0]?.address || null,
+          subject: message.envelope.subject || "",
+          date: message.envelope.date || null
         });
       }
 
-      // Fetch returns oldest → newest
-      // Reverse to return newest → oldest
       emails.reverse();
 
       return {
@@ -95,15 +91,19 @@ export const getEmails = async (userData, query = {}) => {
       lock.release();
     }
   } catch (error) {
-    console.error("IMAP ERROR:", error.message);
+    console.error("IMAP Error:", error.message);
 
     return {
       success: false,
-      message: error.message
+      message: "Failed to fetch emails"
     };
   } finally {
-    if (client.usable) {
-      await client.logout();
+    try {
+      if (client.usable) {
+        await client.logout();
+      }
+    } catch {
+      // Ignore logout errors
     }
   }
 };
@@ -123,8 +123,8 @@ export const getEmail = async (
     port: Number(userData.imap.port),
     secure: userData.imap.secure,
     auth: {
-      user: userData.imap.auth.user,
-      pass: userData.imap.auth.pass
+      user: userData.imap.username,
+      pass: userData.imap.password
     }
   });
 
@@ -206,8 +206,8 @@ export const getAttachments = async (
     port: Number(userData.imap.port),
     secure: userData.imap.secure,
     auth: {
-      user: userData.imap.auth.user,
-      pass: userData.imap.auth.pass
+      user: userData.imap.username,
+      pass: userData.imap.password
     }
   });
 
@@ -321,8 +321,8 @@ export const downloadAttachment = async (
     port: Number(userData.imap.port),
     secure: userData.imap.secure,
     auth: {
-      user: userData.imap.auth.user,
-      pass: userData.imap.auth.pass
+      user: userData.imap.username,
+      pass: userData.imap.password
     }
   });
 
