@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import { getEmail } from "./imap.methods.js";
 
 // Send Email Method
 export const sendEmail = async (userData, { to, subject, text }) => {
@@ -44,4 +45,42 @@ export const sendEmail = async (userData, { to, subject, text }) => {
 
   }
 
+};
+
+// Forward Email Method
+export const forwardEmail = async (
+  userData,
+  { emailId, to, comment = "", mailbox = "INBOX" }
+) => {
+  // Fetch original email via IMAP
+  const original = await getEmail(userData, emailId, mailbox);
+
+  if (!original.success || !original.data) {
+    return {
+      success: false,
+      message: original.message || "Failed to fetch original email for forwarding"
+    };
+  }
+
+  const originalEmail = original.data;
+  const fwdSubject = originalEmail.subject?.startsWith("Fwd:")
+    ? originalEmail.subject
+    : `Fwd: ${originalEmail.subject || ""}`;
+
+  const forwardText = [
+    comment ? `${comment}\n\n` : "",
+    "---------- Forwarded message ---------",
+    `From: ${originalEmail.from || "Unknown"}`,
+    `Date: ${originalEmail.date || ""}`,
+    `Subject: ${originalEmail.subject || ""}`,
+    `To: ${Array.isArray(originalEmail.to) ? originalEmail.to.join(", ") : originalEmail.to || ""}`,
+    "\n",
+    originalEmail.body || ""
+  ].join("\n");
+
+  return await sendEmail(userData, {
+    to,
+    subject: fwdSubject,
+    text: forwardText
+  });
 };
