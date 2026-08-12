@@ -11,6 +11,7 @@ import {
   spamEmail,
   markImportantStatus
 } from "../methods/imap.methods.js";
+import { forwardEmail } from "../methods/smtp.methods.js";
 
 const router = Router();
 
@@ -238,6 +239,34 @@ router.patch("/emails/:email_id/important", async (req, res) => {
     return res.status(result.success ? 200 : 400).json(result);
   } catch (error) {
     console.error(error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.post("/emails/:email_id/forward", async (req, res) => {
+  try {
+    const emailId = Number(req.params.email_id);
+    const recipient = req.body.recipient || req.body.to;
+    const { comment, mailbox } = req.body || {};
+
+    if (!Number.isInteger(emailId) || emailId <= 0) {
+      return res.status(400).json({ success: false, message: "Invalid email id" });
+    }
+
+    if (!recipient) {
+      return res.status(400).json({ success: false, message: "Recipient email address is required for forwarding" });
+    }
+
+    const result = await forwardEmail(req.decryptedData, {
+      emailId,
+      to: recipient,
+      comment,
+      mailbox
+    });
+
+    return res.status(result.success ? 200 : 400).json(result);
+  } catch (error) {
+    console.error("FORWARD EMAIL ERROR:", error.message);
     return res.status(500).json({ success: false, message: error.message });
   }
 });

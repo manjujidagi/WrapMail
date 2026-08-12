@@ -19,7 +19,11 @@ export const getEmails = async (userData, query = {}) => {
     auth: userData.imap.auth || {
       user: userData.imap.username,
       pass: userData.imap.password
-    }
+    },
+    logger: false,
+    connectionTimeout: 12000,
+    greetingTimeout: 12000,
+    socketTimeout: 20000,
   });
 
   // Prevent unhandled error events from crashing Node.js
@@ -523,6 +527,11 @@ export const deleteEmail = async (
     }
   });
 
+  // Prevent unhandled ECONNRESET / error events from crashing Node.js
+  client.on("error", (err) => {
+    console.error("IMAP Connection Error (deleteEmail):", err.message);
+  });
+
   try {
     await client.connect();
     const lock = await client.getMailboxLock(mailbox);
@@ -566,6 +575,11 @@ export const markReadStatus = async (
       user: userData.imap.username,
       pass: userData.imap.password
     }
+  });
+
+  // Prevent unhandled ECONNRESET / error events from crashing Node.js
+  client.on("error", (err) => {
+    console.error("IMAP Connection Error (markReadStatus):", err.message);
   });
 
   try {
@@ -639,6 +653,11 @@ export const markImportantStatus = async (
       user: userData.imap.username,
       pass: userData.imap.password
     }
+  });
+
+  // Prevent unhandled ECONNRESET / error events from crashing Node.js
+  client.on("error", (err) => {
+    console.error("IMAP Connection Error (markImportantStatus):", err.message);
   });
 
   try {

@@ -3,26 +3,40 @@ import { getEmail } from "./imap.methods.js";
 
 // Send Email Method
 export const sendEmail = async (userData, { to, subject, text }) => {
+  const smtpUser = userData.smtp?.auth?.user || userData.smtp?.username || userData.smtp?.user;
+  const smtpPass = userData.smtp?.auth?.pass || userData.smtp?.password || userData.smtp?.pass;
+  const port = Number(userData.smtp?.port) || 587;
+  const isSecure = port === 465;
+
+  if (!smtpUser || !smtpPass) {
+    return {
+      success: false,
+      message: "Missing SMTP credentials. Please configure your email account SMTP password (or App Password) in Connected Accounts settings.",
+    };
+  }
 
   // Create SMTP Transporter
   const transporter = nodemailer.createTransport({
-    host: userData.smtp.host,
-    port: Number(userData.smtp.port),
-    secure: userData.smtp.secure,
+    host: userData.smtp?.host || "smtp.gmail.com",
+    port,
+    secure: isSecure,
+    requireTLS: !isSecure,
     auth: {
-      user: userData.smtp.auth.user,
-      pass: userData.smtp.auth.pass
-    }
+      user: smtpUser,
+      pass: smtpPass,
+    },
+    tls: {
+      rejectUnauthorized: false,
+    },
   });
 
   try {
-
     // Email Options
     const mailOptions = {
-      from: userData.smtp.auth.user,
+      from: smtpUser,
       to,
       subject,
-      text
+      text,
     };
 
     // Send Email
@@ -31,20 +45,16 @@ export const sendEmail = async (userData, { to, subject, text }) => {
     return {
       success: true,
       messageId: info.messageId,
-      accepted: info.accepted
+      accepted: info.accepted,
     };
-
   } catch (error) {
-
     console.error("SMTP ERROR:", error.message);
 
     return {
       success: false,
-      message: error.message
+      message: error.message,
     };
-
   }
-
 };
 
 // Forward Email Method
@@ -67,15 +77,20 @@ export const forwardEmail = async (
     ? originalEmail.subject
     : `Fwd: ${originalEmail.subject || ""}`;
 
+  const senderText =
+    typeof originalEmail.from === "object"
+      ? originalEmail.from?.text || originalEmail.from?.address || JSON.stringify(originalEmail.from)
+      : originalEmail.from || "Unknown";
+
   const forwardText = [
     comment ? `${comment}\n\n` : "",
     "---------- Forwarded message ---------",
-    `From: ${originalEmail.from || "Unknown"}`,
+    `From: ${senderText}`,
     `Date: ${originalEmail.date || ""}`,
     `Subject: ${originalEmail.subject || ""}`,
     `To: ${Array.isArray(originalEmail.to) ? originalEmail.to.join(", ") : originalEmail.to || ""}`,
     "\n",
-    originalEmail.body || ""
+    originalEmail.body || originalEmail.snippet || "",
   ].join("\n");
 
   return await sendEmail(userData, {
