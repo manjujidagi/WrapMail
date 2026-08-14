@@ -10,6 +10,16 @@ import smtpRoutes from './src/routes/smtp.routes.js';
 
 dotenv.config();
 
+// Global safety net: prevent IMAP ECONNRESET or any other unhandled
+// error/rejection from crashing the WrapMail server process entirely.
+process.on('uncaughtException', (err) => {
+  console.error('[WrapMail] Uncaught Exception (server kept alive):', err.message);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[WrapMail] Unhandled Promise Rejection (server kept alive):', reason);
+});
+
 const app = express();
 const port = process.env.PORT || 3000;
 const base = '/api';

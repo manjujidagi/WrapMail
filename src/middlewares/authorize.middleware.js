@@ -10,7 +10,9 @@ const authorize = (req, res, next) => {
   try {
     const decryptedData = decrypt(configData);
 
-    // TODO : Also verify all the required fields are present in decryptedData
+    if (!decryptedData || typeof decryptedData !== 'object') {
+      return res.status(400).json({ error: 'Invalid User-Data header', error_code: 'INVALID_USER_DATA' });
+    }
 
     req.decryptedData = decryptedData;
   } catch (error) {

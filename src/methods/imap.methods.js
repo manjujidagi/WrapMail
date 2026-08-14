@@ -1,4 +1,5 @@
 import { ImapFlow } from "imapflow";
+import { simpleParser } from "mailparser";
 
 // Fetch Emails
 export const getEmails = async (userData, query = {}) => {
@@ -16,10 +17,14 @@ export const getEmails = async (userData, query = {}) => {
     host: userData.imap.host,
     port: Number(userData.imap.port),
     secure: userData.imap.secure,
-    auth: {
-      user: userData.imap.auth.user,
-      pass: userData.imap.auth.pass
-    }
+    auth: userData.imap.auth || {
+      user: userData.imap.username,
+      pass: userData.imap.password
+    },
+    logger: false,
+    connectionTimeout: 12000,
+    greetingTimeout: 12000,
+    socketTimeout: 20000,
   });
 
   try {
@@ -122,10 +127,14 @@ export const getEmail = async (
     host: userData.imap.host,
     port: Number(userData.imap.port),
     secure: userData.imap.secure,
-    auth: {
-      user: userData.imap.auth.user,
-      pass: userData.imap.auth.pass
+    auth: userData.imap.auth || {
+      user: userData.imap.username,
+      pass: userData.imap.password
     }
+  });
+
+  client.on("error", (err) => {
+    console.error("IMAP Connection Error:", err.message);
   });
 
   try {
@@ -136,8 +145,6 @@ export const getEmail = async (
     const lock = await client.getMailboxLock(mailbox);
 
     try {
-      // Open selected mailbox
-      await client.mailboxOpen(mailbox);
 
       // Fetch email by UID
       const message = await client.fetchOne(
@@ -160,16 +167,51 @@ export const getEmail = async (
         };
       }
 
+      let cleanBody = "";
+      if (message.source) {
+        try {
+          const parsed = await simpleParser(message.source);
+          cleanBody = (parsed.text || "").trim();
+          if (!cleanBody && parsed.html) {
+            cleanBody = parsed.html
+              .replace(/<style[\s\S]*?<\/style>/gi, "")
+              .replace(/<script[\s\S]*?<\/script>/gi, "")
+              .replace(/<[^>]+>/g, " ")
+              .replace(/\s+/g, " ")
+              .trim();
+          }
+        } catch {
+          cleanBody = message.source.toString();
+        }
+      }
+
+      // Sanitize Quoted-Printable encoding and MIME boundaries
+      const sanitizedBody = cleanBody
+        .replace(/^--[\w-]+.*$/gm, "")
+        .replace(/^Content-Type:.*$/gm, "")
+        .replace(/^Content-Transfer-Encoding:.*$/gm, "")
+        .replace(/^Content-Disposition:.*$/gm, "")
+        .replace(/=\r?\n/g, "")
+        .replace(/=3D/gi, "=")
+        .replace(/=E2=80=99/gi, "'")
+        .replace(/=E2=80=93/gi, "-")
+        .replace(/=E2=80=94/gi, "--")
+        .replace(/=C2=A0/gi, " ")
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0)
+        .join("\n\n");
+
       return {
         success: true,
         message: "Email fetched successfully",
         data: {
           id: message.uid,
-          from: message.envelope.from?.[0]?.address,
+          from: message.envelope.from?.[0]?.address || message.envelope.from?.[0]?.name || "",
           to: message.envelope.to?.map(user => user.address),
-          subject: message.envelope.subject,
+          subject: message.envelope.subject || "",
           date: message.envelope.date,
-          body: message.source.toString()
+          body: sanitizedBody || "(No readable text body found in this email)"
         }
       };
     } finally {
@@ -205,10 +247,14 @@ export const getAttachments = async (
     host: userData.imap.host,
     port: Number(userData.imap.port),
     secure: userData.imap.secure,
-    auth: {
-      user: userData.imap.auth.user,
-      pass: userData.imap.auth.pass
+    auth: userData.imap.auth || {
+      user: userData.imap.username,
+      pass: userData.imap.password
     }
+  });
+
+  client.on("error", (err) => {
+    console.error("IMAP Connection Error:", err.message);
   });
 
   try {
@@ -219,8 +265,6 @@ export const getAttachments = async (
     const lock = await client.getMailboxLock(mailbox);
 
     try {
-      // Open selected mailbox
-      await client.mailboxOpen(mailbox);
 
       // Fetch email body structure by UID
       const message = await client.fetchOne(
@@ -320,10 +364,14 @@ export const downloadAttachment = async (
     host: userData.imap.host,
     port: Number(userData.imap.port),
     secure: userData.imap.secure,
-    auth: {
-      user: userData.imap.auth.user,
-      pass: userData.imap.auth.pass
+    auth: userData.imap.auth || {
+      user: userData.imap.username,
+      pass: userData.imap.password
     }
+  });
+
+  client.on("error", (err) => {
+    console.error("IMAP Connection Error:", err.message);
   });
 
   try {
@@ -334,9 +382,6 @@ export const downloadAttachment = async (
     const lock = await client.getMailboxLock(mailbox);
 
     try {
-      // Open selected mailbox
-      await client.mailboxOpen(mailbox);
-
       // Download attachment using email UID and attachment part id
       const download = await client.download(
         emailId,
@@ -346,7 +391,9 @@ export const downloadAttachment = async (
         }
       );
 
-      if (!download) {
+      if (!download || !download.content) {
+        lock.release();
+        if (client.usable) await client.logout();
         return res.status(404).json({
           success: false,
           message: "Attachment not found"
@@ -354,14 +401,6 @@ export const downloadAttachment = async (
       }
 
       const { meta, content } = download;
-
-      // Attachment not found
-      if (!content) {
-        return res.status(404).json({
-          success: false,
-          message: "Attachment not found"
-        });
-      }
 
       // Set response headers
       res.setHeader(
@@ -374,18 +413,276 @@ export const downloadAttachment = async (
         `attachment; filename="${meta.filename || "attachment"}"`
       );
 
+      const cleanup = async () => {
+        try {
+          lock.release();
+        } catch {}
+        if (client.usable) {
+          try {
+            await client.logout();
+          } catch {}
+        }
+      };
+
+      res.on("finish", cleanup);
+      res.on("close", cleanup);
+      res.on("error", cleanup);
+
       // Stream attachment to client
       content.pipe(res);
+    } catch (err) {
+      lock.release();
+      throw err;
+    }
+  } catch (error) {
+    console.error("IMAP ERROR:", error.message);
+
+    if (client.usable) {
+      try {
+        await client.logout();
+      } catch {}
+    }
+
+    if (!res.headersSent) {
+      return res.status(500).json({
+        success: false,
+        message: error.message
+      });
+    }
+  }
+};
+
+// =======================================================
+// Move Email by UID to Target Mailbox
+// =======================================================
+export const moveEmail = async (
+  userData,
+  emailId,
+  targetMailbox,
+  mailbox = "INBOX"
+) => {
+  const client = new ImapFlow({
+    host: userData.imap.host,
+    port: Number(userData.imap.port),
+    secure: userData.imap.secure,
+    auth: userData.imap.auth || {
+      user: userData.imap.username,
+      pass: userData.imap.password
+    }
+  });
+
+  client.on("error", (err) => {
+    console.error("IMAP Connection Error:", err.message);
+  });
+
+  try {
+    await client.connect();
+    const lock = await client.getMailboxLock(mailbox);
+
+    try {
+      // Auto-create folder/label if it does not exist
+      try {
+        await client.mailboxCreate(targetMailbox);
+      } catch {
+        // Ignore error if folder/label already exists
+      }
+
+      const result = await client.messageMove(emailId, targetMailbox, { uid: true });
+      return {
+        success: true,
+        message: `Email moved to ${targetMailbox} successfully`,
+        data: result
+      };
     } finally {
       lock.release();
     }
   } catch (error) {
     console.error("IMAP ERROR:", error.message);
-
-    return res.status(500).json({
+    return {
       success: false,
       message: error.message
-    });
+    };
+  } finally {
+    if (client.usable) {
+      await client.logout();
+    }
+  }
+};
+
+// =======================================================
+// Delete Email by UID
+// =======================================================
+export const deleteEmail = async (
+  userData,
+  emailId,
+  mailbox = "INBOX"
+) => {
+  const client = new ImapFlow({
+    host: userData.imap.host,
+    port: Number(userData.imap.port),
+    secure: userData.imap.secure,
+    auth: userData.imap.auth || {
+      user: userData.imap.username,
+      pass: userData.imap.password
+    }
+  });
+
+  // Prevent unhandled ECONNRESET / error events from crashing Node.js
+  client.on("error", (err) => {
+    console.error("IMAP Connection Error (deleteEmail):", err.message);
+  });
+
+  try {
+    await client.connect();
+    const lock = await client.getMailboxLock(mailbox);
+
+    try {
+      await client.messageDelete(emailId, { uid: true });
+      return {
+        success: true,
+        message: "Email deleted successfully"
+      };
+    } finally {
+      lock.release();
+    }
+  } catch (error) {
+    console.error("IMAP ERROR:", error.message);
+    return {
+      success: false,
+      message: error.message
+    };
+  } finally {
+    if (client.usable) {
+      await client.logout();
+    }
+  }
+};
+
+// =======================================================
+// Mark Email as Read or Unread by UID
+// =======================================================
+export const markReadStatus = async (
+  userData,
+  emailId,
+  read = true,
+  mailbox = "INBOX"
+) => {
+  const client = new ImapFlow({
+    host: userData.imap.host,
+    port: Number(userData.imap.port),
+    secure: userData.imap.secure,
+    auth: userData.imap.auth || {
+      user: userData.imap.username,
+      pass: userData.imap.password
+    }
+  });
+
+  // Prevent unhandled ECONNRESET / error events from crashing Node.js
+  client.on("error", (err) => {
+    console.error("IMAP Connection Error (markReadStatus):", err.message);
+  });
+
+  try {
+    await client.connect();
+    const lock = await client.getMailboxLock(mailbox);
+
+    try {
+      if (read) {
+        await client.messageFlagsAdd(emailId, ["\\Seen"], { uid: true });
+      } else {
+        await client.messageFlagsRemove(emailId, ["\\Seen"], { uid: true });
+      }
+      return {
+        success: true,
+        message: `Email marked as ${read ? "read" : "unread"} successfully`
+      };
+    } finally {
+      lock.release();
+    }
+  } catch (error) {
+    console.error("IMAP ERROR:", error.message);
+    return {
+      success: false,
+      message: error.message
+    };
+  } finally {
+    if (client.usable) {
+      await client.logout();
+    }
+  }
+};
+
+// =======================================================
+// Archive Email by UID
+// =======================================================
+export const archiveEmail = async (
+  userData,
+  emailId,
+  mailbox = "INBOX",
+  archiveMailbox = "Archive"
+) => {
+  return await moveEmail(userData, emailId, archiveMailbox, mailbox);
+};
+
+// =======================================================
+// Mark Email as Spam / Junk by UID
+// =======================================================
+export const spamEmail = async (
+  userData,
+  emailId,
+  mailbox = "INBOX",
+  spamMailbox = "Junk"
+) => {
+  return await moveEmail(userData, emailId, spamMailbox, mailbox);
+};
+
+// =======================================================
+// Mark Email as Important / Flagged by UID
+// =======================================================
+export const markImportantStatus = async (
+  userData,
+  emailId,
+  important = true,
+  mailbox = "INBOX"
+) => {
+  const client = new ImapFlow({
+    host: userData.imap.host,
+    port: Number(userData.imap.port),
+    secure: userData.imap.secure,
+    auth: userData.imap.auth || {
+      user: userData.imap.username,
+      pass: userData.imap.password
+    }
+  });
+
+  // Prevent unhandled ECONNRESET / error events from crashing Node.js
+  client.on("error", (err) => {
+    console.error("IMAP Connection Error (markImportantStatus):", err.message);
+  });
+
+  try {
+    await client.connect();
+    const lock = await client.getMailboxLock(mailbox);
+
+    try {
+      if (important) {
+        await client.messageFlagsAdd(emailId, ["\\Flagged"], { uid: true });
+      } else {
+        await client.messageFlagsRemove(emailId, ["\\Flagged"], { uid: true });
+      }
+      return {
+        success: true,
+        message: `Email marked as ${important ? "important" : "not important"} successfully`
+      };
+    } finally {
+      lock.release();
+    }
+  } catch (error) {
+    console.error("IMAP ERROR:", error.message);
+    return {
+      success: false,
+      message: error.message
+    };
   } finally {
     if (client.usable) {
       await client.logout();
