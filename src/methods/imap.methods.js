@@ -13,19 +13,7 @@ export const getEmails = async (userData, query = {}) => {
   const limitNumber = Math.max(1, Number(limit));
 
   // Create IMAP client
-  const client = new ImapFlow({
-    host: userData.imap.host,
-    port: Number(userData.imap.port),
-    secure: userData.imap.secure,
-    auth: userData.imap.auth || {
-      user: userData.imap.username,
-      pass: userData.imap.password
-    },
-    logger: false,
-    connectionTimeout: 12000,
-    greetingTimeout: 12000,
-    socketTimeout: 20000,
-  });
+  const client = new ImapFlow(userData.imap);
 
   try {
     // Connect to IMAP server
